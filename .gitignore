@@ -1,0 +1,15 @@
+# Python virtual environment
+venv/
+.venv/
+env/
+
+# Environment variables & API keys (CRITICAL)
+.env
+
+# Python cache files
+__pycache__/
+*.pyc
+
+# Local vector database storage (for when we add ChromaDB later)
+chroma_db/
+*.chroma

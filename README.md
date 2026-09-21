@@ -43,7 +43,6 @@ AskPDF/
     └── src/
         ├── components/
         │   ├── Header.jsx       # Top navigation with document status badge & reset
-        │   ├── Sidebar.jsx      # Collapsible drawer with active doc stats & quick prompts
         │   ├── ChatBox.jsx      # Conversational interface with markdown rendering
         │   ├── MetricsBadge.jsx # Sub-500ms retrieval & generation latency badge
         │   └── SourceDrawer.jsx # Expandable accordion for cited text excerpts
@@ -126,7 +125,6 @@ You can run AskPDF in either **Web Application Mode** or **Interactive Terminal 
    - **Context Q&A**: Ask any question and receive context-grounded answers with inline citations `(pg.no. X)`.
    - **Metrics Badges**: View vector search time (with `⚡ SUB-500MS` badge), generation time, and total latency.
    - **Source Drawers**: Click "Cited Sources" beneath each response to view exact excerpts and page numbers.
-   - **Sidebar**: Quick-click suggestion prompts and view active indexed vector counts.
 
 ---
 

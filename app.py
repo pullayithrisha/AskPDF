@@ -31,38 +31,10 @@ app.add_middleware(
 rag_instance = None
 active_document_name = None
 
-UPLOAD_DIR = os.path.join(config.BASE_DIR, "uploads")
-os.makedirs(UPLOAD_DIR, exist_ok=True)
-
 def ensure_rag_instance():
-    """Attempts to initialize RAG instance from existing ChromaDB or sample.pdf."""
+    """RAG instance is only loaded when a document is uploaded by the user."""
     global rag_instance, active_document_name
-    if rag_instance is not None:
-        return
-
-    if os.path.exists(config.CHROMA_PATH):
-        try:
-            candidate = AskDocRAG()
-            count = candidate.vector_store._collection.count()
-            if count > 0:
-                rag_instance = candidate
-                sample = candidate.vector_store._collection.get(limit=1)
-                if sample and sample.get("metadatas") and len(sample["metadatas"]) > 0:
-                    src = sample["metadatas"][0].get("source", "sample.pdf")
-                    active_document_name = os.path.basename(src)
-                else:
-                    active_document_name = "sample.pdf"
-                return
-        except Exception:
-            pass
-
-    if os.path.exists(config.DEFAULT_PDF_PATH):
-        try:
-            ingest_pdf(config.DEFAULT_PDF_PATH, original_filename="sample.pdf")
-            rag_instance = AskDocRAG()
-            active_document_name = "sample.pdf"
-        except Exception:
-            pass
+    return
 
 class QueryRequest(BaseModel):
     question: str
@@ -88,10 +60,15 @@ def get_status():
 
 @app.post("/api/reset")
 def reset_session():
-    """Resets session state."""
+    """Resets session state and clears active document."""
     global rag_instance, active_document_name
     rag_instance = None
     active_document_name = None
+    try:
+        if os.path.exists(config.CHROMA_PATH):
+            shutil.rmtree(config.CHROMA_PATH)
+    except Exception:
+        pass
     return {"message": "Session reset successfully."}
 
 import tempfile

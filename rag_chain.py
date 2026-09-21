@@ -24,35 +24,37 @@ import config
 load_dotenv()
 
 def is_summary_query(query: str) -> bool:
-    """Helper to detect if user query is requesting a document summary."""
+    """Helper to detect if user query is requesting a document summary or key takeaways."""
     q_clean = query.lower().strip()
     keywords = [
-        "summary", "summarize", "overview", "main points", "key takeaways",
-        "brief summary", "document summary", "synopsis", "tldr", "tl;dr",
-        "what is this document about", "what is this pdf about", "abstract"
+        "summary", "summarize", "summarise", "overview", "main points", "key takeaways",
+        "takeaway", "takeaways", "keytaj ways", "keytajways", "brief summary",
+        "document summary", "synopsis", "tldr", "tl;dr", "highlights", "recap",
+        "breakdown", "core topics", "gist", "what is this document about",
+        "what is this pdf about", "abstract", "bullet points", "key points"
     ]
-    return any(kw in q_clean for kw in keywords)
+    if any(kw in q_clean for kw in keywords):
+        return True
+    if "key" in q_clean and ("point" in q_clean or "takeaway" in q_clean or "aspect" in q_clean):
+        return True
+    return False
 
 
-# Prompt Template for Full Document Summaries
+# Prompt Template for Full Document Summaries & Key Takeaways
 SUMMARY_SYSTEM_PROMPT = """You are AskDoc, an expert document AI assistant.
-Your task is to provide a comprehensive, clear, and perfectly structured summary of the uploaded document based ONLY on the full document context provided below.
+Your task is to provide a comprehensive, detailed, and complete summary or key takeaways of the uploaded document based ONLY on the document context provided below.
 
-CRITICAL INLINE CITATION RULE:
-Every section, bullet point, or statement MUST include its page reference inline directly next to the content using the format `(pg.no. X)` or `(pg.no. X, Y)`.
-Example:
-- **Feedforward Neural Networks (FNNs):** Structure, information flow, and layers (pg.no. 1).
-- **Backpropagation:** Minimizes the cost function through weight adjustments (pg.no. 1, 2).
-Do NOT group all page numbers at the end of the text. Place `(pg.no. X)` directly next to each relevant topic or statement!
-
-INSTRUCTIONS FOR THE SUMMARY STRUCTURE:
-1. Executive Overview: Provide a clear 2-3 sentence overview of the document with inline page citations.
-2. Key Concepts & Core Topics: Bullet points listing main topics/algorithms with inline page citations `(pg.no. X)`.
-3. Important Details & Highlights: Detailed technical highlights with inline page citations `(pg.no. X)`.
-4. Summary Conclusion: Brief conclusion with inline page citations.
-
-CRITICAL RULE:
-Strictly ground your summary in the provided document text below. Do NOT hallucinate, extrapolate, or bring in outside knowledge not present in the text.
+CRITICAL COMPLETENESS RULES:
+1. DO NOT SKIP ANY KEY INFORMATION (ABSOLUTE RULE):
+   - You MUST thoroughly extract and cover ALL major sections, entities, topics, facts, and key takeaways present in the document.
+   - Regardless of the document type (financial, legal, medical, technical, resumes, research, narratives, etc.), you must extract the core essence without leaving anything out.
+   - For structured documents (contracts, policies, reports), ensure all major clauses, metrics, findings, and conclusions are captured.
+   - If the user asks for a summary or key takeaways, provide a VERY DETAILED response. Do not provide a high-level gloss-over. List every single point and synthesize completely.
+2. ACCURACY & CHRONOLOGY:
+   - Correctly distinguish current status vs past history, or active vs expired terms.
+   - Keep dates, metrics, percentages, names, and facts exactly as stated in the document.
+3. INLINE CITATION RULE:
+   - Include inline page references using `(pg.no. X)` directly next to each section or bullet point. Example: "(pg.no. 1)".
 
 Document Context:
 {context}
@@ -60,22 +62,26 @@ Document Context:
 User Request:
 {question}
 
-Summary:"""
+Detailed Summary / Key Takeaways:"""
 
 
-# Strict anti-hallucination prompt template for Q&A
-STRICT_SYSTEM_PROMPT = """You are AskDoc, an intelligent document AI assistant.
-Your job is to answer the user's question accurately based ONLY on the provided document context below.
+# Strict anti-hallucination & chronological accuracy prompt for Q&A
+STRICT_SYSTEM_PROMPT = """You are AskDoc, an intelligent and extremely accurate document AI assistant.
+Your job is to answer the user's question with 100% factual correctness based ONLY on the provided document context below.
 
-CRITICAL INLINE CITATION RULE:
-Include inline page references directly next to each statement or fact using `(pg.no. X)`. Example: "Backpropagation computes gradients using the chain rule (pg.no. 2)."
-Do NOT put citations at the end. Place them directly next to the relevant text!
-
-CRITICAL INSTRUCTIONS:
-1. Answer strictly using only the factual information directly stated in the Context section below.
-2. If the question cannot be answered directly from the provided context, state clearly and politely: "I don't have information about that in the uploaded document."
-3. Do NOT invent, assume, extrapolate, or use external knowledge outside of the document context.
-4. Keep your response concise, accurate, well-formatted, and direct.
+CRITICAL RULES FOR ACCURACY & TIMELINES:
+1. TEMPORAL & CHRONOLOGICAL AWARENESS (CRITICAL):
+   - You MUST carefully inspect ALL dates, years, timelines, and status words (e.g., "Present", "Active", "Ongoing", "Expired", "Current") across the ENTIRE document before answering.
+   - When answering questions about "current", "latest", or "present" information (whether it's the latest financial quarter, active contract clause, most recent employer, or ongoing project):
+     * Look at all listed timelines related to the entity.
+     * Compare the dates/years. The one with the highest end date/year or a word like "Present/Ongoing" is the current one.
+     * NEVER confuse past/completed/expired items with current/active ones.
+2. FACTUAL GROUNDING:
+   - Answer directly and factually using the exact names, institutions, metrics, and dates from the text.
+   - Do NOT guess, assume, or invent details.
+   - If the question cannot be answered from the provided context, state: "I don't have information about that in the uploaded document."
+3. INLINE CITATION RULE:
+   - Include inline page references using `(pg.no. X)` directly next to each fact. Example: "The current project phase is Alpha (pg.no. 1)."
 
 Context:
 {context}
@@ -111,10 +117,10 @@ class AskDocRAG:
             collection_metadata={"hnsw:space": "cosine"}
         )
 
-        # Cosine Similarity Retriever (k=6 for rich context retrieval)
+        # Cosine Similarity Retriever (k=8 for deep context retrieval)
         self.retriever = self.vector_store.as_retriever(
             search_type="similarity",
-            search_kwargs={"k": 6}
+            search_kwargs={"k": 8}
         )
 
         # Gemini LLM Initialization
@@ -126,28 +132,38 @@ class AskDocRAG:
         self.qa_prompt = PromptTemplate.from_template(STRICT_SYSTEM_PROMPT)
         self.summary_prompt = PromptTemplate.from_template(SUMMARY_SYSTEM_PROMPT)
 
+    def get_all_chunks_ordered(self) -> List[Document]:
+        """Retrieves all chunks from the vector store sorted by page and chunk index."""
+        res = self.vector_store.get()
+        raw_docs = res.get("documents", [])
+        metadatas = res.get("metadatas", [])
+        docs = [
+            Document(page_content=doc_str, metadata=meta or {})
+            for doc_str, meta in zip(raw_docs, metadatas)
+        ]
+        docs.sort(key=lambda d: (d.metadata.get("page", 0), d.metadata.get("chunk_index", 0)))
+        return docs
+
     def query(self, question: str) -> Dict[str, Any]:
         """
         Executes a query against the document. Automatically uses full document context
-        for summary requests, and top-k vector retrieval for specific Q&A questions.
+        for documents <= 40 chunks and summary requests, and sorted top-k vector retrieval
+        for larger documents.
         """
         start_total = time.perf_counter()
         summary_mode = is_summary_query(question)
 
+        total_chunks = 0
+        try:
+            total_chunks = self.vector_store._collection.count()
+        except Exception:
+            total_chunks = 0
+
         start_retrieval = time.perf_counter()
-        if summary_mode:
-            # For summary, retrieve all chunks in the collection for a complete view
-            res = self.vector_store.get()
-            raw_docs = res.get("documents", [])
-            metadatas = res.get("metadatas", [])
-            retrieved_docs: List[Document] = [
-                Document(page_content=doc_str, metadata=meta or {})
-                for doc_str, meta in zip(raw_docs, metadatas)
-            ]
-            # Cap at 80 chunks if extremely large (~40,000 characters) to ensure swift execution
-            retrieved_docs = retrieved_docs[:80]
-        else:
-            retrieved_docs: List[Document] = self.retriever.invoke(question)
+
+        # Strictly enforce LangChain RAG vector retrieval for EVERY query.
+        raw_retrieved = self.retriever.invoke(question)
+        retrieved_docs = sorted(raw_retrieved, key=lambda d: (d.metadata.get("page", 0), d.metadata.get("chunk_index", 0)))
 
         retrieval_time_ms = (time.perf_counter() - start_retrieval) * 1000.0
 
@@ -178,7 +194,6 @@ class AskDocRAG:
                 raise e
 
         generation_time_ms = (time.perf_counter() - start_gen) * 1000.0
-
         total_time_ms = (time.perf_counter() - start_total) * 1000.0
 
         return {

@@ -48,6 +48,8 @@ def ingest_pdf(pdf_path: str, original_filename: str = None):
         separators=["\n\n", "\n", " ", ""]
     )
     chunks = text_splitter.split_documents(documents)
+    for i, chunk in enumerate(chunks):
+        chunk.metadata["chunk_index"] = i
     print(f"[+] Split document into {len(chunks)} text chunk(s) (size: {config.CHUNK_SIZE}, overlap: {config.CHUNK_OVERLAP}).")
 
     # Step 3: Embeddings Initialization & Chroma Storage

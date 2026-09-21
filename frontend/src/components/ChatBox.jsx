@@ -1,32 +1,36 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Send, Paperclip, Loader2, FileText, RefreshCw, Sparkles, Zap, HelpCircle, Bot, BookOpen } from 'lucide-react';
+import { ArrowUp, Paperclip, Loader2, FileText, Sparkles, BookOpen, ChevronDown, ChevronRight } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
-import MetricsBadge from './MetricsBadge';
-import SourceDrawer from './SourceDrawer';
 
-const SUGGESTIONS = [
-  { label: "⚡ Summarize Document", query: "Generate a comprehensive summary of this document." },
-  { label: "💡 Key Concepts", query: "What are the key concepts and core topics in this document?" },
-  { label: "🔍 Target Applications", query: "What are the target applications and real-world use cases?" },
-  { label: "🛡️ Anti-Hallucination Test", query: "What is the capital of France?" }
+const QUICK_ACTIONS = [
+  {
+    label: "📄 Summarize Document",
+    query: "Provide a comprehensive, structured summary of this document covering the main objectives, key findings, and conclusions."
+  },
+  {
+    label: "💡 Key Takeaways",
+    query: "What are the most important key takeaways, discoveries, or core points in this document?"
+  },
+  {
+    label: "❓ What is this document about?",
+    query: "What is the primary topic, problem, and objective discussed in this document?"
+  }
 ];
 
 export default function ChatBox({ 
   activeDoc, 
   onFileUpload, 
   isUploading, 
-  selectedPrompt, 
-  onClearSelectedPrompt,
-  onDocUpdated
+  onDocUpdated,
+  messages,
+  setMessages
 }) {
-  const [messages, setMessages] = useState([]);
   const [inputQuery, setInputQuery] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [openSourcesId, setOpenSourcesId] = useState(null);
 
   const messagesEndRef = useRef(null);
   const fileInputRef = useRef(null);
-
-  const isDocActive = Boolean(activeDoc);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -34,15 +38,7 @@ export default function ChatBox({
 
   useEffect(() => {
     scrollToBottom();
-  }, [messages, isLoading, isUploading]);
-
-  // Handle suggested prompt from Sidebar
-  useEffect(() => {
-    if (selectedPrompt) {
-      handleSend(selectedPrompt);
-      if (onClearSelectedPrompt) onClearSelectedPrompt();
-    }
-  }, [selectedPrompt]);
+  }, [messages, isLoading]);
 
   const handleSend = async (queryText) => {
     const textToSend = queryText || inputQuery;
@@ -67,7 +63,7 @@ export default function ChatBox({
 
       if (!response.ok) {
         const errorData = await response.json();
-        throw new Error(errorData.detail || 'Failed to fetch answer.');
+        throw new Error(errorData.detail || 'Failed to generate response.');
       }
 
       const data = await response.json();
@@ -80,9 +76,6 @@ export default function ChatBox({
         id: Date.now() + 1,
         sender: 'bot',
         text: data.answer,
-        retrievalTimeMs: data.retrieval_time_ms,
-        generationTimeMs: data.generation_time_ms,
-        totalTimeMs: data.total_time_ms,
         sources: data.source_documents || []
       };
 
@@ -93,7 +86,7 @@ export default function ChatBox({
         {
           id: Date.now() + 1,
           sender: 'bot',
-          text: `⚠️ **Error:** ${err.message}`
+          text: `Error: ${err.message}`
         }
       ]);
     } finally {
@@ -108,179 +101,195 @@ export default function ChatBox({
     }
   };
 
+  const toggleSources = (id) => {
+    setOpenSourcesId((prev) => (prev === id ? null : id));
+  };
+
   return (
-    <div className="chat-card">
-      {/* Hidden File Input */}
+    <div className="flex-1 flex flex-col h-full bg-[#0d1017] text-zinc-100 overflow-hidden relative">
       <input
         type="file"
         accept=".pdf"
         ref={fileInputRef}
         onChange={(e) => e.target.files?.[0] && onFileUpload(e.target.files[0])}
-        style={{ display: 'none' }}
+        className="hidden"
       />
 
       {/* Messages Canvas */}
-      <div className="chat-messages-container">
-        
-        {/* Welcome Empty State */}
-        {messages.length === 0 && (
-          <div className="empty-state-card">
-            <div className="empty-state-icon">
-              <Bot size={36} />
-            </div>
-            <h2 className="empty-state-title">AskDoc RAG Assistant</h2>
-            <p className="empty-state-desc">
-              Ask any question about your document. Powered by LangChain, Gemini 2.5 Flash, and ChromaDB vector search with sub-second retrieval.
-            </p>
-
-            <div className="empty-state-grid">
-              {SUGGESTIONS.map((sug, idx) => (
-                <button
-                  key={idx}
-                  onClick={() => handleSend(sug.query)}
-                  disabled={isLoading || isUploading}
-                  className="empty-state-pill"
-                >
-                  <span className="pill-title">{sug.label}</span>
-                  <span className="pill-query">{sug.query}</span>
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* Chat Messages */}
-        {messages.map((msg) => (
-          <div
-            key={msg.id}
-            className={`message-row ${msg.sender === 'user' ? 'user' : 'bot'}`}
-          >
-            {msg.sender === 'user' ? (
-              <div className="user-bubble">
-                {msg.text}
+      <div className="flex-1 overflow-y-auto px-4 py-6 md:px-8">
+        <div className="chat-container flex flex-col gap-6">
+          
+          {/* Empty State */}
+          {messages.length === 0 && (
+            <div className="my-auto pt-16 pb-8 flex flex-col items-center text-center">
+              <div className="w-14 h-14 rounded-2xl bg-blue-600/10 border border-blue-500/20 flex items-center justify-center text-blue-400 mb-4 shadow-sm">
+                <FileText className="w-7 h-7" />
               </div>
-            ) : (
-              <div className="bot-bubble-wrapper">
-                <div className="bot-bubble markdown-body">
-                  <ReactMarkdown>{msg.text}</ReactMarkdown>
+              
+              <h1 className="text-2xl font-bold text-zinc-100 tracking-tight mb-2">
+                Ask Questions About Your PDF
+              </h1>
+              
+              <p className="text-sm text-zinc-400 max-w-md mb-8 leading-relaxed">
+                {activeDoc 
+                  ? `Uploaded document: "${activeDoc}". Get quick summaries, key takeaways, or ask any question.`
+                  : "Upload a PDF document to summarize content and get fast, accurate answers."}
+              </p>
+
+              {/* Quick Action Buttons */}
+              <div className="flex flex-col sm:flex-row flex-wrap items-center justify-center gap-2.5 w-full max-w-xl">
+                {QUICK_ACTIONS.map((action, idx) => (
+                  <button
+                    key={idx}
+                    onClick={() => handleSend(action.query)}
+                    disabled={isLoading || isUploading}
+                    className="py-2.5 px-4 rounded-xl bg-zinc-850 hover:bg-zinc-800 bg-[#161b26] border border-zinc-700/70 hover:border-blue-500/50 text-xs font-medium text-zinc-200 hover:text-white transition-all shadow-sm cursor-pointer"
+                  >
+                    {action.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Messages Stream */}
+          {messages.map((msg) => (
+            <div
+              key={msg.id}
+              className={`flex flex-col ${msg.sender === 'user' ? 'items-end' : 'items-start'}`}
+            >
+              {msg.sender === 'user' ? (
+                <div className="max-w-[85%] sm:max-w-[75%] rounded-2xl px-4 py-2.5 bg-blue-600 text-white text-sm leading-relaxed whitespace-pre-wrap shadow-sm font-normal">
+                  {msg.text}
                 </div>
+              ) : (
+                <div className="w-full max-w-3xl rounded-2xl bg-[#151922] p-5 border border-zinc-800/90 shadow-sm">
+                  {/* Assistant Response */}
+                  <div className="text-sm text-zinc-200 leading-relaxed space-y-3 prose-zinc">
+                    <ReactMarkdown>{msg.text}</ReactMarkdown>
+                  </div>
 
-                {/* Sub-500ms Vector Metrics Badge */}
-                {typeof msg.retrievalTimeMs === 'number' && (
-                  <MetricsBadge
-                    retrievalTimeMs={msg.retrievalTimeMs}
-                    generationTimeMs={msg.generationTimeMs}
-                    totalTimeMs={msg.totalTimeMs}
-                  />
-                )}
+                  {/* Sources reference */}
+                  {msg.sources && msg.sources.length > 0 && (
+                    <div className="mt-3 pt-3 border-t border-zinc-800/80">
+                      <button
+                        onClick={() => toggleSources(msg.id)}
+                        className="flex items-center gap-1.5 text-xs text-zinc-400 hover:text-zinc-200 transition-colors font-medium cursor-pointer"
+                      >
+                        <BookOpen className="w-3.5 h-3.5 text-blue-400" />
+                        <span>
+                          {msg.sources.length} {msg.sources.length === 1 ? 'source page' : 'source pages'} referenced
+                        </span>
+                        {openSourcesId === msg.id ? (
+                          <ChevronDown className="w-3.5 h-3.5" />
+                        ) : (
+                          <ChevronRight className="w-3.5 h-3.5" />
+                        )}
+                      </button>
 
-                {/* Cited Sources Accordion Drawer */}
-                {msg.sources && msg.sources.length > 0 && (
-                  <SourceDrawer sources={msg.sources} />
-                )}
-              </div>
-            )}
-          </div>
-        ))}
-
-        {/* Loading Spinner */}
-        {isLoading && (
-          <div className="message-row bot">
-            <div className="bot-bubble loading-bubble">
-              <Loader2 size={16} className="animate-spin text-cyan-400" />
-              <span>Searching vector database & synthesizing response...</span>
+                      {openSourcesId === msg.id && (
+                        <div className="mt-2.5 space-y-2">
+                          {msg.sources.map((source, idx) => (
+                            <div 
+                              key={idx} 
+                              className="p-3 rounded-lg bg-zinc-900/90 border border-zinc-800 text-xs text-zinc-300"
+                            >
+                              <div className="flex items-center justify-between text-[11px] text-zinc-400 mb-1">
+                                <span className="font-semibold text-zinc-300">
+                                  Page {source.page}
+                                </span>
+                              </div>
+                              <p className="text-zinc-300 text-xs leading-relaxed italic bg-zinc-950/40 p-2 rounded border border-zinc-800/60">
+                                "{source.snippet}"
+                              </p>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
-          </div>
-        )}
+          ))}
 
-        <div ref={messagesEndRef} />
+          {/* Loading Indicator */}
+          {isLoading && (
+            <div className="flex items-center gap-2.5 text-zinc-400 text-xs py-3 px-4 rounded-xl bg-[#151922] border border-zinc-800 w-fit">
+              <Loader2 className="w-4 h-4 animate-spin text-blue-400" />
+              <span>Searching document and generating answer...</span>
+            </div>
+          )}
+
+          <div ref={messagesEndRef} />
+        </div>
       </div>
 
-      {/* Quick Suggestions Chips Bar */}
-      {messages.length > 0 && (
-        <div className="compact-suggestions-bar">
-          <span className="suggestions-label">Suggestions:</span>
-          <div className="chips-row">
-            {SUGGESTIONS.map((sug, idx) => (
-              <button
-                key={idx}
-                onClick={() => handleSend(sug.query)}
-                disabled={isLoading || isUploading}
-                className="suggestion-chip"
-              >
-                <span>{sug.label}</span>
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
-
       {/* Input Section */}
-      <div className="input-section">
-        <form
-          onSubmit={(e) => {
-            e.preventDefault();
-            handleSend();
-          }}
-          className="input-form"
-        >
-          {/* Active File Name Badge & Change PDF Button / Loading State */}
-          {isUploading ? (
-            <div className="uploading-file-badge">
-              <Loader2 size={14} className="animate-spin text-cyan-400" />
-              <span>Indexing PDF...</span>
-            </div>
-          ) : isDocActive ? (
-            <div className="active-file-badge-group">
-              <div className="active-file-pill" title={activeDoc}>
-                <FileText size={14} className="doc-icon" />
-                <span className="doc-name-text">{activeDoc}</span>
-              </div>
+      <div className="p-4 border-t border-zinc-800 bg-[#0d1017]">
+        <div className="chat-container">
+          {/* Quick Action Chips when messages exist */}
+          {messages.length > 0 && !isLoading && (
+            <div className="flex items-center gap-2 mb-2.5 overflow-x-auto pb-1">
               <button
-                type="button"
-                onClick={() => fileInputRef.current?.click()}
-                disabled={isLoading || isUploading}
-                className="change-pdf-btn"
-                title="Upload a different PDF document"
+                onClick={() => handleSend("Provide a comprehensive, structured summary of this document.")}
+                className="px-2.5 py-1 rounded-full bg-zinc-800 hover:bg-zinc-700 text-[11px] text-zinc-300 hover:text-white transition-colors border border-zinc-700/60 cursor-pointer shrink-0"
               >
-                <RefreshCw size={12} />
-                <span>Change</span>
+                📄 Summarize
+              </button>
+              <button
+                onClick={() => handleSend("What are the most important key takeaways from this document?")}
+                className="px-2.5 py-1 rounded-full bg-zinc-800 hover:bg-zinc-700 text-[11px] text-zinc-300 hover:text-white transition-colors border border-zinc-700/60 cursor-pointer shrink-0"
+              >
+                💡 Key Takeaways
               </button>
             </div>
-          ) : (
+          )}
+
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              handleSend();
+            }}
+            className="flex items-center gap-2 bg-[#151922] border border-zinc-700/70 focus-within:border-blue-500 rounded-xl px-3 py-2 transition-all shadow-sm"
+          >
             <button
               type="button"
               onClick={() => fileInputRef.current?.click()}
               disabled={isLoading || isUploading}
-              className="upload-inline-btn"
+              className="p-1.5 rounded-lg text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800 transition-colors shrink-0 cursor-pointer"
               title="Upload PDF document"
             >
-              <Paperclip size={16} />
-              <span>Upload PDF</span>
+              <Paperclip className="w-4 h-4" />
             </button>
-          )}
 
-          <input
-            type="text"
-            value={inputQuery}
-            onChange={(e) => setInputQuery(e.target.value)}
-            onKeyDown={handleKeyDown}
-            placeholder={isUploading ? "Uploading & indexing document..." : "Ask a question about the document..."}
-            disabled={isLoading || isUploading}
-            className="prompt-input"
-          />
+            <input
+              type="text"
+              value={inputQuery}
+              onChange={(e) => setInputQuery(e.target.value)}
+              onKeyDown={handleKeyDown}
+              placeholder={
+                isUploading 
+                  ? "Indexing document..." 
+                  : activeDoc 
+                    ? `Ask anything about ${activeDoc}...` 
+                    : "Ask a question..."
+              }
+              disabled={isLoading || isUploading}
+              className="flex-1 bg-transparent border-none outline-none text-sm text-zinc-100 placeholder-zinc-500 px-1 font-normal"
+            />
 
-          <button
-            type="submit"
-            disabled={isLoading || isUploading || !inputQuery.trim()}
-            className="send-btn"
-            title="Send query"
-          >
-            <Send size={16} />
-          </button>
-        </form>
+            <button
+              type="submit"
+              disabled={isLoading || isUploading || !inputQuery.trim()}
+              className="w-8 h-8 rounded-lg bg-blue-600 text-white hover:bg-blue-500 disabled:opacity-30 disabled:hover:bg-blue-600 flex items-center justify-center transition-all shrink-0 cursor-pointer disabled:cursor-not-allowed shadow-sm"
+              title="Send question"
+            >
+              <ArrowUp className="w-4 h-4 stroke-[2.5]" />
+            </button>
+          </form>
+        </div>
       </div>
-
     </div>
   );
 }

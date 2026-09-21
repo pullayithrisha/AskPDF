@@ -1,15 +1,26 @@
-# Python virtual environment
+# Virtual Environment
 venv/
 .venv/
 env/
+ENV/
 
-# Environment variables & API keys (CRITICAL)
+# Environment Variables & Secret API Keys
 .env
 
-# Python cache files
+# Python Cache & Bytecode
 __pycache__/
 *.pyc
+*.pyo
+*.pyd
+.pytest_cache/
 
-# Local vector database storage (for when we add ChromaDB later)
+# Local Vector Database Storage
 chroma_db/
 *.chroma
+uploads/
+
+# IDE & OS Artifacts
+.vscode/
+.idea/
+.DS_Store
+*.swp
